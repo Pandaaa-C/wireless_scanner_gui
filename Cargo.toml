@@ -1,0 +1,12 @@
+[package]
+name = "wireless_scanner_gui"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+colored = "3.0.0"
+iced = { version = "0.10", features = ["tokio"] }
+
+
+
+
