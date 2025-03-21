@@ -1,3 +1,6 @@
+use core::str;
+use std::collections::HashMap;
+
 use iced::widget::{ button, column, container, text, scrollable };
 use iced::{ executor, Application, Command, Element, Settings, Theme };
 use iced::Color;
@@ -9,7 +12,11 @@ fn list_wifi_networks() -> Vec<(String, String, i32)> {
     #[cfg(target_os = "linux")]
     {
         let output = ProcessCommand::new("nmcli")
-            .args(["-t", "-f", "SSID,BSSID,SIGNAL", "dev", "wifi"])
+            .arg("-t")
+            .arg("-f")
+            .arg("SSID,BSSID,SIGNAL")
+            .arg("dev")
+            .arg("wifi")
             .output()
             .expect("Failed to execute command");
 
@@ -22,8 +29,7 @@ fn list_wifi_networks() -> Vec<(String, String, i32)> {
                         if let Some(name) = parts.next() {
                             if let Some(mac_address) = parts.next() {
                                 if !name.trim().is_empty() && !mac_address.trim().is_empty() {
-                                    networks.push((
-                                        name.to_string(),
+                                    hash_map.insert(name.to_string(), (
                                         mac_address.to_string(),
                                         strength,
                                     ));
@@ -33,6 +39,82 @@ fn list_wifi_networks() -> Vec<(String, String, i32)> {
                     }
                 }
             }
+        } else {
+            eprintln!("Error: {}", str::from_utf8(&output.stderr).unwrap());
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let output = ProcessCommand::new("netsh")
+            .arg("wlan")
+            .arg("show")
+            .arg("network")
+            .arg("mode=bssid")
+            .output()
+            .expect("Failed to execute command");
+
+        if output.status.success() {
+            let wifi_list = String::from_utf8_lossy(&output.stdout);
+            let mut hash_map: HashMap<String, (String, i32)> = HashMap::new();
+            for line in wifi_list.lines() {
+                if line.contains("SSID") {
+                    if let Some(ssid) = line.split(":").nth(1) {
+                        let ssid = ssid.trim().to_string();
+                        if let Some(bssid_line) = wifi_list.lines().find(|&l| l.contains("BSSID")) {
+                            if let Some(bssid) = bssid_line.split(":").nth(1) {
+                                let bssid = bssid.trim().to_string();
+                                if
+                                    let Some(signal_line) = wifi_list
+                                        .lines()
+                                        .find(|&l| l.contains("Signal"))
+                                {
+                                    if let Some(signal_strength) = signal_line.split(":").nth(1) {
+                                        if let Ok(strength) = signal_strength.trim().parse::<i32>() {
+                                            hash_map.insert(ssid, (bssid, strength));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            eprintln!("Error: {}", str::from_utf8(&output.stderr).unwrap());
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let output = ProcessCommand::new("airport").arg("-s").output().expect("Failed to execute command");
+
+        if output.status.success() {
+            let wifi_list = String::from_utf8_lossy(&output.stdout);
+            let mut hash_map: HashMap<String, (String, i32)> = HashMap::new();
+
+            for line in wifi_list.lines() {
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if parts.len() >= 3 {
+                    let ssid = parts[0].to_string();
+                    let bssid = parts[1].to_string();
+                    if let Ok(strength) = parts[2].parse::<i32>() {
+                        hash_map.insert(ssid, (bssid, strength));
+                    }
+                }
+            }
+
+            println!("Available Networks: ");
+            for (name, (mac, strength)) in hash_map.iter() {
+                println!(
+                    "SSID: {}  BSSID: {}  Strength: {}",
+                    name.green(),
+                    mac.yellow(),
+                    signal_to_text(*strength)
+                );
+            }
+        } else {
+            eprintln!("Error: {}", str::from_utf8(&output.stderr).unwrap());
         }
     }
     networks
