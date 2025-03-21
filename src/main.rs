@@ -113,7 +113,7 @@ impl Application for WirelessScanner {
                 )
             });
 
-        let scrollable_network_list = scrollable(network_list).height(iced::Length::Fill);
+        let scrollable_network_list = scrollable(network_list).width(iced::Length::Fill).height(iced::Length::Fill);
 
         container(column![scan_button, scrollable_network_list]).center_x().center_y().into()
     }
